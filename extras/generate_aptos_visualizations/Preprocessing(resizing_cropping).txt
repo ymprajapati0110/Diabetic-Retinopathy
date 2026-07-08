@@ -1,0 +1,79 @@
+from pathlib import Path
+import pandas as pd
+import seaborn as sns
+import matplotlib.pyplot as plt
+from PIL import Image
+Resizing & Cropping Code
+# modified from https://www.kaggle.com/tanlikesmath/diabetic-retinopathy-resnet50-binary-cropped
+import cv2
+def resize_images(location, name, extension, resize_location, desired_size = 1024):
+    img = cv2.imread(f"{location}/{name}.{extension}")
+    
+    img = cv2.copyMakeBorder(img,10,10,10,10,cv2.BORDER_CONSTANT,value=[0,0,0])
+    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+    ret,gray = cv2.threshold(gray,10,255,cv2.THRESH_BINARY)
+    
+    contours,hierarchy = cv2.findContours(gray,
+                                          cv2.RETR_EXTERNAL,
+                                          cv2.CHAIN_APPROX_SIMPLE)
+    contours = max(contours, key=cv2.contourArea)
+    x,y,w,h = cv2.boundingRect(contours)
+
+    if w>200 and h>200:
+        new_img = img[y:y+h,x:x+w]
+        height, width, _= new_img.shape
+
+        if max([height, width]) > desired_size:
+            ratio = float(desired_size/max([height, width]))
+            new_img = cv2.resize(new_img, 
+                                 tuple([int(width*ratio), int(height*ratio)]), 
+                                 interpolation = cv2.INTER_CUBIC)
+            
+        cv2.imwrite(f'{resize_location}/{name}.jpg', new_img)
+    else:
+        print(f'No bounding for {name}')
+        cv2.imwrite(f'{resize_location}/{name}.jpg', img)
+Load Data
+path = Path("../input")
+train_19_df = pd.read_csv(path/'labels'/'trainLabels19.csv')
+test_19_df = pd.read_csv(path/'labels'/'testImages19.csv')
+train_15_df = pd.read_csv(path/'labels'/'trainLabels15.csv')
+test_15_df = pd.read_csv(path/'labels'/'testLabels15.csv')
+
+train_19_df.head() 
+id_code	diagnosis
+0	000c1434d8d7	2
+1	001639a390f0	4
+2	0024cdab0c1e	1
+3	002c21358ce6	0
+4	005b95c28852	0
+test_19_df.head() 
+id_code
+0	0005cfc8afb6
+1	003f0afdcd15
+2	006efc72b638
+3	00836aaacf06
+4	009245722fa4
+train_15_df.head() 
+image	level
+0	10_left	0
+1	10_right	0
+2	13_left	0
+3	13_right	0
+4	15_left	1
+test_15_df.head() 
+image	level	Usage
+0	1_left	0	Private
+1	1_right	0	Private
+2	2_left	0	Public
+3	2_right	0	Public
+4	3_left	2	Private
+test_15_df.rename(index=str, columns={"image": "id_code", "level":"diagnosis"}, inplace=True)
+train_15_df.rename(index=str, columns={"image": "id_code", "level":"diagnosis"}, inplace=True)
+
+data_df = train_19_df.append([test_15_df.drop('Usage', axis=1), train_15_df], ignore_index = True)
+Simple Data Exploration
+
+
+
+

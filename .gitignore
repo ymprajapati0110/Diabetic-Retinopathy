@@ -1,0 +1,38 @@
+# Python virtual environment
+backend/venv/
+venv/
+.venv/
+
+# Next.js / Node.js
+frontend/node_modules/
+frontend/.next/
+node_modules/
+.next/
+
+# Large files / Model weights
+*.pth
+*.pt
+*.bin
+*.h5
+convnextv2_large_epoch_25_ema.pth
+
+# Python bytecode caches
+**/__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Backend upload caches
+backend/uploads/
+uploads/
+
+# Environment files
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# OS files
+.DS_Store
+Thumbs.db
