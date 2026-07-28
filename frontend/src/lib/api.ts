@@ -2,7 +2,7 @@ import axios from 'axios';
 
 // Original axios instance for local connection
 const apiInstance = axios.create({
-  baseURL: 'http://localhost:8000/api', // FastAPI default port
+  baseURL: process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api', // FastAPI default port or environment-defined URL
   headers: {
     'Content-Type': 'application/json',
   },

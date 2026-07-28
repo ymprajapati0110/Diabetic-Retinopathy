@@ -1,0 +1,52 @@
+version: '3.8'
+
+services:
+  # 1. MySQL Database Service
+  mysql-db:
+    image: mysql:8.0
+    container_name: dr_mysql_db
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: password123
+      MYSQL_DATABASE: dr_medical_ai
+    ports:
+      - "3307:3306" # Map container's 3306 to host's 3307 to avoid port clashes with any local MySQL
+    volumes:
+      - mysql_data:/var/lib/mysql
+
+  # 2. FastAPI Backend Service
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    container_name: dr_backend_api
+    restart: always
+    depends_on:
+      - mysql-db
+    environment:
+      - DATABASE_URL=mysql+pymysql://root:password123@mysql-db:3306/dr_medical_ai
+      - BASE_URL=http://localhost:8000
+      - FORCE_MOCK=false
+      - FORCE_CPU=true  # Force loads PyTorch weights on CPU inside the container
+    ports:
+      - "8000:8000"
+    volumes:
+      - uploads_data:/app/backend/uploads
+
+  # 3. Next.js Frontend Service
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        - NEXT_PUBLIC_API_URL=http://localhost:8000/api
+    container_name: dr_frontend_ui
+    restart: always
+    depends_on:
+      - backend
+    ports:
+      - "3000:3000"
+
+volumes:
+  mysql_data:
+  uploads_data:

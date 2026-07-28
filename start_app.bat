@@ -1,8 +1,8 @@
 @echo off
 echo Starting Medical AI Diabetic Retinopathy System...
 
-:: Start the FastAPI backend in a new command prompt window
-start "FastAPI Backend" cmd /k "cd backend && venv\Scripts\python.exe -m uvicorn main:app --reload --port 8000"
+:: Start the FastAPI backend in a new command prompt window (FORCE_CPU=false defaults to mock mode on CPU to prevent laptop freezing)
+start "FastAPI Backend" cmd /k "cd backend && set FORCE_CPU=false && venv\Scripts\python.exe -m uvicorn main:app --reload --port 8000"
 
 :: Start the Next.js frontend in a new command prompt window
 start "Next.js Frontend" cmd /k "cd frontend && npm run dev"
