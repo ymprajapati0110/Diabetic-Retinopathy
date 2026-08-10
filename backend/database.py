@@ -8,6 +8,8 @@ load_dotenv()
 # User's specified MySQL connection
 # Format: mysql+pymysql://user:password@host:port/dbname
 MYSQL_URL = os.getenv("DATABASE_URL", "mysql+pymysql://root:%23Yash01.@localhost:3306/dr_medical_ai")
+if MYSQL_URL:
+    MYSQL_URL = MYSQL_URL.strip().strip('"').strip("'")
 
 engine = create_engine(MYSQL_URL, echo=False)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
