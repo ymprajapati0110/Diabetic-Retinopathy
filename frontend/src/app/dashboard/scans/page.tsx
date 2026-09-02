@@ -3,7 +3,7 @@
 import { FileSearch, Activity, Calendar } from 'lucide-react';
 import Link from 'next/link';
 import { useState, useEffect } from 'react';
-import api from '@/lib/api';
+import api, { resolveImageUrl } from '@/lib/api';
 
 export default function ScansPage() {
   const [scans, setScans] = useState<any[]>([]);
@@ -68,7 +68,7 @@ export default function ScansPage() {
               >
                 <Link href={`/dashboard/patients/${scan.patient_id}`}>
                   <div className="aspect-video bg-slate-900 relative overflow-hidden flex items-center justify-center">
-                     <img src={scan.raw_image_s3_url} className="absolute inset-0 w-full h-full object-cover opacity-70 group-hover:opacity-100 group-hover:scale-105 transition-all duration-500" />
+                     <img src={resolveImageUrl(scan.raw_image_s3_url)} className="absolute inset-0 w-full h-full object-cover opacity-70 group-hover:opacity-100 group-hover:scale-105 transition-all duration-500" />
                      {scan.status !== 'completed' && <Activity className="absolute text-white animate-pulse" size={32} />}
                      <div className="absolute top-3 left-3 bg-slate-900/80 backdrop-blur-md px-2 py-1 rounded border border-slate-700 text-xs text-white font-mono flex items-center gap-2">
                         <span className={`w-2 h-2 rounded-full ${scan.status === 'completed' ? 'bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.8)]' : 'bg-yellow-500 animate-pulse'}`}></span>

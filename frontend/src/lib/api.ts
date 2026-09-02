@@ -24,6 +24,28 @@ apiInstance.interceptors.request.use((config) => {
   return config;
 }, (error) => Promise.reject(error));
 
+// Helper to resolve image URLs properly across localhost and cloud backends
+export function resolveImageUrl(url: string | null | undefined): string {
+  if (!url) return '';
+  if (url.startsWith('blob:') || url.startsWith('data:')) return url;
+  
+  const backendBase = (process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000')
+    .replace(/\/api\/?$/, '')
+    .replace(/\/$/, '');
+    
+  if (url.includes('/uploads/')) {
+    const filename = url.split('/uploads/').pop();
+    return `${backendBase}/uploads/${filename}`;
+  }
+  
+  if (url.startsWith('http://localhost:8000') || url.startsWith('http://127.0.0.1:8000')) {
+    const path = url.replace(/^http:\/\/(localhost|127\.0\.0\.1):8000/, '');
+    return `${backendBase}${path}`;
+  }
+
+  return url;
+}
+
 const isDemoMode = false;
 
 // Mock database in localStorage

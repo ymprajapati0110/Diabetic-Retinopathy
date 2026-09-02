@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { UploadCloud, FileImage, CheckCircle, AlertCircle, Eye, History, Trash2, Calendar, ClipboardCheck } from 'lucide-react';
-import api from '@/lib/api';
+import api, { resolveImageUrl } from '@/lib/api';
 
 export default function DashboardPage() {
   const [file, setFile] = useState<File | null>(null);
@@ -301,13 +301,13 @@ export default function DashboardPage() {
 
                 <div className="relative flex-1 min-h-[340px] flex items-center justify-center bg-slate-950 p-6">
                   <img
-                    src={scanResult.raw_image_s3_url}
+                    src={resolveImageUrl(scanResult.raw_image_s3_url)}
                     alt="Original Fundus"
                     className="absolute max-w-full max-h-[300px] object-contain rounded-xl select-none"
                   />
                   {scanResult.gradcam_image_s3_url && (
                     <img
-                      src={scanResult.gradcam_image_s3_url}
+                      src={resolveImageUrl(scanResult.gradcam_image_s3_url)}
                       alt="Grad-CAM Overlay"
                       className="absolute max-w-full max-h-[300px] object-contain rounded-xl select-none transition-opacity"
                       style={{ opacity: opacity / 100 }}
