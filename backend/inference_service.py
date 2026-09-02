@@ -354,7 +354,6 @@ class DiabeticRetinopathyAI:
             self.model = None
         finally:
             self._model_loading = False
-            self.model = None
 
     def preprocess_fundus(self, img_rgb: np.ndarray, desired_size: int = 512) -> np.ndarray:
         """
