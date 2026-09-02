@@ -16,7 +16,7 @@ load_dotenv()
 app = FastAPI(title="Medical AI - Diabetic Retinopathy API")
 
 # Configure CORS
-origins = os.getenv("ALLOWED_ORIGINS", "http://localhost:3000").split(",")
+origins = os.getenv("ALLOWED_ORIGINS", "http://localhost:3000,http://127.0.0.1:3000,http://localhost:3001,http://127.0.0.1:3001").split(",")
 
 app.add_middleware(
     CORSMiddleware,

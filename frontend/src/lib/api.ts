@@ -1,8 +1,8 @@
 import axios from 'axios';
 
-// Original axios instance for local connection
+// Axios instance pointing to relative /api (proxied by Next.js to FastAPI backend)
 const apiInstance = axios.create({
-  baseURL: process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api', // FastAPI default port or environment-defined URL
+  baseURL: '/api',
   headers: {
     'Content-Type': 'application/json',
   },
@@ -16,12 +16,8 @@ apiInstance.interceptors.request.use((config) => {
   return config;
 }, (error) => Promise.reject(error));
 
-// Check if we should use demo/mock mode
-// We use demo mode if we are running in the browser and NOT on localhost/127.0.0.1
-const isDemoMode = typeof window !== 'undefined' && 
-  window.location.hostname !== 'localhost' && 
-  window.location.hostname !== '127.0.0.1' &&
-  window.location.hostname !== '::1';
+// Set isDemoMode to false so the real trained PyTorch AI backend is always used
+const isDemoMode = false;
 
 // Mock database in localStorage
 const MOCK_SCANS_KEY = 'retina_mock_scans';

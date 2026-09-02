@@ -46,7 +46,7 @@ def upload_scan(
     current_user: User = Depends(get_current_verified_doctor),
     db: Session = Depends(get_db)
 ):
-    if not file.content_type.startswith("image/"):
+    if file.content_type and not file.content_type.startswith("image/"):
         raise HTTPException(status_code=400, detail="File must be an image.")
 
     # Find or create a default patient for this doctor if patient_id is not provided

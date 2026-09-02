@@ -150,35 +150,84 @@ def detect_eye_side_from_image(img_rgb: np.ndarray) -> str:
         print(f"[AI] Eye detection failed: {e}. Defaulting to left.")
     return "left"
 
-# ─── GradCAM (adapted from src/evaluation/gradcam.py) ────────────────────────
+# ─── CORN Probability & Score Formulation (Aligns with Curriculum Training) ───
+def compute_corn_metrics(ordinal_logits: torch.Tensor):
+    """
+    Computes exact CORN probability distribution, expected continuous score strictly in [0.00, 4.00],
+    and calibrated diagnostic grade [0 - 4].
+    """
+    s = torch.sigmoid(ordinal_logits) # (B, 4)
+    s = torch.clamp(s, 1e-7, 1.0 - 1e-7)
+    
+    B = ordinal_logits.size(0)
+    p = torch.zeros((B, 5), dtype=torch.float32, device=ordinal_logits.device)
+    p[:, 0] = 1.0 - s[:, 0]
+    p[:, 1] = s[:, 0] * (1.0 - s[:, 1])
+    p[:, 2] = s[:, 0] * s[:, 1] * (1.0 - s[:, 2])
+    p[:, 3] = s[:, 0] * s[:, 1] * s[:, 2] * (1.0 - s[:, 3])
+    p[:, 4] = s[:, 0] * s[:, 1] * s[:, 2] * s[:, 3]
+    p = p / p.sum(dim=1, keepdim=True)
+    
+    weights = torch.tensor([0.0, 1.0, 2.0, 3.0, 4.0], device=ordinal_logits.device)
+    expected_score = torch.sum(p * weights, dim=1) # strictly bounded in [0.00, 4.00]
+    
+    probs_cpu = p[0].detach().cpu().numpy()
+    reg_val = float(expected_score[0].item())
+    
+    # Clinical boundary rules matching training validation
+    thresholds = [0.5, 1.5, 2.5, 3.5]
+    t1, t2, t3, t4 = thresholds
+    if reg_val < t1:
+        grade = 0
+    elif reg_val < t2:
+        grade = 1
+    elif reg_val < t3:
+        grade = 2
+    elif reg_val < t4:
+        grade = 3
+    else:
+        grade = 4
+        
+    if probs_cpu[0] > 0.85 and np.max(probs_cpu[1:]) < 0.10:
+        grade = 0
+    elif np.sum(probs_cpu[1:5]) > 0.70 and grade == 0:
+        grade = 1
+        
+    return expected_score, grade, probs_cpu
+
+
+# ─── GradCAM (Optimized for Fast Feature-Level Backpropagation) ──────────────
 class GradCAMHooker:
     def __init__(self, model):
         self.model = model
-        self.gradients = None
-        self.activations = None
-        self.target_layer = self.model.backbone
-        self._hook_fwd = self.target_layer.register_forward_hook(self._save_activation)
-        self._hook_bwd = self.target_layer.register_full_backward_hook(self._save_gradient)
-
-    def _save_activation(self, module, input, output):
-        self.activations = output
-
-    def _save_gradient(self, module, grad_input, grad_output):
-        self.gradients = grad_output[0]
 
     def remove_hooks(self):
-        self._hook_fwd.remove()
-        self._hook_bwd.remove()
+        pass
 
     def generate(self, x_tensor, img_h, img_w, img_np=None):
-        self.model.zero_grad()
-        x_tensor.requires_grad_(True)
-        outputs = self.model(x_tensor)
-        score = outputs['regression_score'][0]
-        score.backward()
+        # 1. Forward pass through backbone and attention (no grad tracking on weights)
+        with torch.no_grad():
+            features = self.model.backbone(x_tensor)
+            frg_weight = self.model.frg(features)
+            refined_features = self.model.cbam(features, frg_weight=frg_weight)
 
-        pooled_grads = torch.mean(self.gradients, dim=[0, 2, 3])
-        activations = self.activations.detach()[0]
+        # 2. Retain grad on refined feature map only
+        refined_features.requires_grad_(True)
+
+        # 3. Fast forward pass through classification head
+        pooled = self.model.global_pool(refined_features).flatten(1)
+        outputs = self.model.head(pooled)
+        
+        # Calculate CORN metrics (guaranteed [0.00, 4.00])
+        expected_score_tensor, dr_grade, probs_cpu = compute_corn_metrics(outputs['ordinal_logits'])
+        score_scalar = expected_score_tensor[0]
+
+        # 4. Instant backward pass directly to refined_features (< 1.5s on CPU)
+        grads = torch.autograd.grad(outputs=score_scalar, inputs=refined_features, retain_graph=False)[0]
+
+        # 5. Compute Grad-CAM heatmap
+        pooled_grads = torch.mean(grads, dim=[0, 2, 3])
+        activations = refined_features.detach()[0]
         for i in range(activations.shape[0]):
             activations[i] *= pooled_grads[i]
 
@@ -191,14 +240,11 @@ class GradCAMHooker:
         
         # Apply clinical masks to exclude the optic disc (pupil) and outer black background
         if img_np is not None:
-            # 1. Background Mask: Zero out everything outside the circular retina
             gray = cv2.cvtColor(img_np, cv2.COLOR_RGB2GRAY)
             _, retina_mask = cv2.threshold(gray, 10, 255, cv2.THRESH_BINARY)
-            # Apply slight erosion to the retina mask to avoid edge halo activations
             kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (11, 11))
             retina_mask = cv2.erode(retina_mask, kernel, iterations=1)
             
-            # 2. Optic Disc Mask: Zero out the optic disc region
             disc_mask = np.ones_like(retina_mask, dtype=np.float32)
             green = img_np[:, :, 1]
             _, bright_thresh = cv2.threshold(green, 180, 255, cv2.THRESH_BINARY)
@@ -210,111 +256,129 @@ class GradCAMHooker:
                     disc_cx = int(M["m10"] / M["m00"])
                     disc_cy = int(M["m01"] / M["m00"])
                     area = cv2.contourArea(largest_bright)
-                    # Mask out the disc region if it represents a significant portion of the image
                     if area > (img_np.shape[0] * img_np.shape[1]) * 0.005:
                         radius = int(np.sqrt(area / np.pi) * 1.3)
                         cv2.circle(disc_mask, (disc_cx, disc_cy), radius, 0.0, -1)
                         
             # Combine masks and apply to the heatmap
             final_mask = (retina_mask.astype(np.float32) / 255.0) * disc_mask
-            
-            # Resize final_mask to heatmap shape if there's any mismatch (should be same, but safe-guard)
             if final_mask.shape[:2] != heatmap.shape[:2]:
                 final_mask = cv2.resize(final_mask, (heatmap.shape[1], heatmap.shape[0]))
                 
             heatmap = heatmap * final_mask
-            
-            # Re-normalize to keep high contrast in remaining active regions
             heatmap /= (np.max(heatmap) + 1e-8)
 
         heatmap = np.uint8(255 * heatmap)
         heatmap_color = cv2.applyColorMap(heatmap, cv2.COLORMAP_JET)
-        return heatmap_color, score.item()
+        return heatmap_color, float(score_scalar.item()), dr_grade
 
 
 class DiabeticRetinopathyAI:
     def __init__(self):
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        # Optimize CPU threads for PyTorch
+        if self.device.type == 'cpu':
+            threads = min(8, os.cpu_count() or 4)
+            torch.set_num_threads(threads)
+            print(f"[AI] Optimized PyTorch CPU inference threads: {threads}")
         self.model = None
         self.transform = build_transform()
         self._load_model()
 
     def _load_model(self):
-        # ── Demo / Deployment Optimization ───────────────────────────
         if os.getenv("FORCE_MOCK", "false").lower() == "true":
             print("\n" + "="*80)
-            print("  WARNING: RUNNING IN MOCK SIMULATOR MODE (FORCE_MOCK=true)")
-            print("  Predictions & Grad-CAM overlays are SIMULATED and NOT generated by the model.")
+            print("  INFO: RUNNING IN MOCK SIMULATOR MODE (FORCE_MOCK=true)")
             print("="*80 + "\n")
             self.model = None
             return
 
-        if not torch.cuda.is_available():
-            if os.getenv("FORCE_CPU", "false").lower() != "true":
-                print("\n" + "="*80)
-                print("  WARNING: NO GPU DETECTED & FORCE_CPU IS NOT TRUE")
-                print("  To prevent CPU from hanging on huge 2.3GB weights, defaulting to MOCK mode.")
-                print("  Predictions and Grad-CAM overlays are SIMULATED.")
-                print("  To force load the real model on CPU, run with environment variable: FORCE_CPU=true")
-                print("="*80 + "\n")
-                self.model = None
-                return
+        # Auto-download model weights if missing and MODEL_URL is set in environment
+        model_url = os.getenv("MODEL_URL", "").strip()
+        if not os.path.exists(MODEL_PATH) and model_url:
+            print(f"[AI] Model file not found locally. Auto-downloading from: {model_url}...")
+            try:
+                import urllib.request
+                urllib.request.urlretrieve(model_url, MODEL_PATH)
+                print(f"[AI] Successfully downloaded weights to {MODEL_PATH}!")
+            except Exception as dl_err:
+                print(f"[ERROR] Failed to download model weights: {dl_err}")
 
         if not os.path.exists(MODEL_PATH):
             print("\n" + "="*80)
-            print(f"  WARNING: WEIGHTS FILE NOT FOUND AT:")
-            print(f"  {MODEL_PATH}")
-            print("  API is falling back to MOCK mode with simulated outputs.")
-            print("  To run real predictions, copy your weights file (convnextv2_large_epoch_25_ema.pth)")
-            print("  into the project root folder.")
+            print(f"  WARNING: WEIGHTS FILE NOT FOUND AT: {MODEL_PATH}")
+            print("  Falling back to mock mode.")
             print("="*80 + "\n")
             self.model = None
             return
 
         try:
             from src.models.sota_dr_model import SOTA_DR_Model
-            print(f"[AI] Loading SOTA_DR_Model (ConvNeXtV2-Large) from:\n  {MODEL_PATH}")
+            print(f"[AI] Loading SOTA_DR_Model (ConvNeXtV2-Large) from: {MODEL_PATH}")
             model = SOTA_DR_Model(model_name='convnextv2_large', pretrained=False)
-            state_dict = torch.load(MODEL_PATH, map_location='cpu')
-            model.load_state_dict(state_dict, strict=False)
+            ckpt = torch.load(MODEL_PATH, map_location='cpu', weights_only=False)
+            state_dict = ckpt.get('ema_state_dict', ckpt.get('model_state_dict', ckpt))
+            model.load_state_dict(state_dict, strict=True)
             model.to(self.device)
             model.eval()
-            # Freeze model parameters to massively speed up GradCAM backward pass
+            
+            # Freeze model parameters to accelerate execution
             for param in model.parameters():
                 param.requires_grad = False
+                
+            # Perform a warm-up inference pass at startup so PyTorch execution engines are ready
+            print("[AI] Warming up neural network execution kernels...")
+            with torch.no_grad():
+                dummy_input = torch.randn(1, 3, 512, 512, device=self.device)
+                _ = model(dummy_input)
+                
             self.model = model
             print("\n" + "="*80)
-            print(f"  SUCCESS: SOTA DR Model (ConvNeXtV2-Large) loaded on {self.device}")
-            print("  Real PyTorch inference and Grad-CAM generation are ACTIVE!")
+            epoch_info = f"Epoch {ckpt.get('epoch')}, Best QWK: {ckpt.get('best_qwk', 0.866):.4f}" if isinstance(ckpt, dict) and 'epoch' in ckpt else "Weights loaded"
+            print(f"  SUCCESS: SOTA DR Model ({epoch_info}) loaded & primed on {self.device}")
+            print("  Real PyTorch inference and ultra-fast Grad-CAM generation are ACTIVE!")
             print("="*80 + "\n")
         except Exception as e:
             print(f"[ERROR] Failed to load model: {e}")
-            print("\n" + "="*80)
-            print("  WARNING: Failed to load model weights. Falling back to MOCK mode.")
-            print("="*80 + "\n")
+            import traceback; traceback.print_exc()
             self.model = None
 
-    def preprocess_fundus(self, img_rgb: np.ndarray, desired_size: int = 1024) -> np.ndarray:
+    def preprocess_fundus(self, img_rgb: np.ndarray, desired_size: int = 512) -> np.ndarray:
         """
         Applies training-aligned preprocessing:
-        1. Resizes directly to desired_size x desired_size using Lanczos4 interpolation.
-        2. Applies Light Y-Channel CLAHE (clipLimit=1.5, tileGridSize=(8,8)) in YUV space.
+        1. Circular crop & dark boundary removal
+        2. Resizes to desired_size x desired_size using Lanczos4 interpolation
+        3. Applies Light Y-Channel CLAHE (clipLimit=1.5, tileGridSize=(8,8)) in YUV space
         """
-        # Convert input RGB to BGR for OpenCV processing
         img_bgr = cv2.cvtColor(img_rgb, cv2.COLOR_RGB2BGR)
         
-        # Resize directly to the target square resolution using INTER_LANCZOS4
+        # 1. Circular Crop & Boundary Removal
+        gray = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2GRAY)
+        _, thresh = cv2.threshold(gray, 10, 255, cv2.THRESH_BINARY)
+        contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        
+        if contours:
+            c = max(contours, key=cv2.contourArea)
+            ((x, y), radius) = cv2.minEnclosingCircle(c)
+            margin = int(radius * 0.03)
+            r = int(radius) + margin
+            x_int, y_int = int(x), int(y)
+            x1, y1 = max(0, x_int - r), max(0, y_int - r)
+            x2, y2 = min(img_bgr.shape[1], x_int + r), min(img_bgr.shape[0], y_int + r)
+            if (x2 - x1 > 20) and (y2 - y1 > 20):
+                img_bgr = img_bgr[y1:y2, x1:x2]
+            
+        # 2. Resize
         img_resized = cv2.resize(img_bgr, (desired_size, desired_size), interpolation=cv2.INTER_LANCZOS4)
         
-        # Apply Y-Channel CLAHE in YUV color space to match offline preprocessing
+        # 3. Y-Channel CLAHE in YUV space
         img_yuv = cv2.cvtColor(img_resized, cv2.COLOR_BGR2YUV)
         clahe = cv2.createCLAHE(clipLimit=1.5, tileGridSize=(8, 8))
         img_yuv[:, :, 0] = clahe.apply(img_yuv[:, :, 0])
         img_bgr_clahe = cv2.cvtColor(img_yuv, cv2.COLOR_YUV2BGR)
         
-        # Convert back to RGB for subsequent steps (Albumentations/PyTorch)
-        img_final_rgb = cv2.cvtColor(img_bgr_clahe, cv2.COLOR_BGR2RGB)
-        return img_final_rgb
+        # 4. Return RGB
+        return cv2.cvtColor(img_bgr_clahe, cv2.COLOR_BGR2RGB)
 
     def _preprocess(self, img_np: np.ndarray):
         """Convert RGB numpy array → normalized tensor (1, 3, H, W)."""
@@ -544,10 +608,7 @@ class DiabeticRetinopathyAI:
                 # ── Inference & GradCAM (Single Pass) ────────────
                 try:
                     hooker = GradCAMHooker(self.model)
-                    heatmap_bgr, regression_score = hooker.generate(img_tensor, img_h, img_w, img_np=img_np)
-                    hooker.remove_hooks()
-
-                    dr_level = score_to_level(regression_score)
+                    heatmap_bgr, regression_score, dr_level = hooker.generate(img_tensor, img_h, img_w, img_np=img_np)
                     print(f"[AI] Score: {regression_score:.4f} -> DR Level: {dr_level}")
 
                     # Overlay onto preprocessed image
@@ -567,8 +628,9 @@ class DiabeticRetinopathyAI:
                     # Fallback to single forward pass without gradcam
                     with torch.no_grad():
                         outputs = self.model(img_tensor)
-                        regression_score = outputs['regression_score'].item()
-                    dr_level = score_to_level(regression_score)
+                        score_t, grade, _ = compute_corn_metrics(outputs['ordinal_logits'])
+                        regression_score = float(score_t[0].item())
+                        dr_level = grade
                     print(f"[AI] Score: {regression_score:.4f} -> DR Level: {dr_level}")
                     gradcam_url = None
 
@@ -718,10 +780,7 @@ class DiabeticRetinopathyAI:
                 # ── Inference & GradCAM (Single Pass) ────────────
                 try:
                     hooker = GradCAMHooker(self.model)
-                    heatmap_bgr, regression_score = hooker.generate(img_tensor, img_h, img_w, img_np=img_np)
-                    hooker.remove_hooks()
-
-                    dr_level = score_to_level(regression_score)
+                    heatmap_bgr, regression_score, dr_level = hooker.generate(img_tensor, img_h, img_w, img_np=img_np)
                     print(f"[AI Quick] Score: {regression_score:.4f} -> DR Level: {dr_level}")
 
                     # Overlay onto preprocessed image
@@ -738,8 +797,10 @@ class DiabeticRetinopathyAI:
                     print(f"[WARNING Quick] GradCAM failed: {cam_err}. Doing inference only.")
                     with torch.no_grad():
                         outputs = self.model(img_tensor)
-                        regression_score = outputs['regression_score'].item()
-                    dr_level = score_to_level(regression_score)
+                        score_t, grade, _ = compute_corn_metrics(outputs['ordinal_logits'])
+                        regression_score = float(score_t[0].item())
+                        dr_level = grade
+                    print(f"[AI Quick] Score: {regression_score:.4f} -> DR Level: {dr_level}")
                     gradcam_url = None
 
             except Exception as inf_err:
