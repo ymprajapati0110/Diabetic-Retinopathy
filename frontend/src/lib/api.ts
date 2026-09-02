@@ -125,7 +125,7 @@ const api = {
         if (file && file instanceof File) {
           fileUrl = URL.createObjectURL(file);
         }
-        
+
         const newScan = {
           id: Date.now(),
           dr_prediction_level: 4, // Proliferative DR as requested
