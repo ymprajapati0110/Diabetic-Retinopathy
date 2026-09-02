@@ -1,8 +1,16 @@
 import axios from 'axios';
 
-// Axios instance pointing to relative /api (proxied by Next.js to FastAPI backend)
+// Get backend API base URL from env or fallback to localhost in development
+const getBaseURL = () => {
+  if (process.env.NEXT_PUBLIC_API_URL) {
+    const raw = process.env.NEXT_PUBLIC_API_URL.replace(/\/$/, '');
+    return raw.endsWith('/api') ? raw : `${raw}/api`;
+  }
+  return 'http://127.0.0.1:8000/api';
+};
+
 const apiInstance = axios.create({
-  baseURL: '/api',
+  baseURL: getBaseURL(),
   headers: {
     'Content-Type': 'application/json',
   },
@@ -16,7 +24,6 @@ apiInstance.interceptors.request.use((config) => {
   return config;
 }, (error) => Promise.reject(error));
 
-// Set isDemoMode to false so the real trained PyTorch AI backend is always used
 const isDemoMode = false;
 
 // Mock database in localStorage
