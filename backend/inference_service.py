@@ -27,7 +27,9 @@ import albumentations as A
 from albumentations.pytorch import ToTensorV2
 
 # ─── Configuration ────────────────────────────────────────────────────────────
-MODEL_PATH = os.path.join(PROJECT_ROOT, "convnextv2_large_epoch_25_ema.pth")
+CLEAN_MODEL_PATH = os.path.join(PROJECT_ROOT, "convnextv2_large_clean.pth")
+EPOCH_MODEL_PATH = os.path.join(PROJECT_ROOT, "convnextv2_large_epoch_25_ema.pth")
+MODEL_PATH = CLEAN_MODEL_PATH if os.path.exists(CLEAN_MODEL_PATH) else EPOCH_MODEL_PATH
 BASE_URL = os.getenv("BASE_URL", "http://localhost:8000")
 
 # ─── Preprocessing (mirrors validation pipeline from training) ────────────────
