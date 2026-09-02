@@ -42,8 +42,15 @@ UPLOAD_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "uploads")
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 app.mount("/uploads", StaticFiles(directory=UPLOAD_DIR), name="uploads")
 
+@app.get("/")
+def root():
+    return {"status": "online", "service": "Retinal Diagnostic AI API", "version": "1.0.0"}
 
-# Serve static files for quick inference and dashboard scans
+@app.get("/health")
+def health():
+    return {"status": "healthy"}
+
+# Include API routers
 app.include_router(auth.router, prefix="/api/auth", tags=["Auth"])
 app.include_router(patient.router, prefix="/api/patients", tags=["Patients"])
 app.include_router(scan.router, prefix="/api/scans", tags=["Scans"])

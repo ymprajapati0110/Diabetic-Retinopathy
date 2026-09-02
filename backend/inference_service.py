@@ -280,14 +280,20 @@ class DiabeticRetinopathyAI:
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         # Optimize CPU threads for PyTorch
         if self.device.type == 'cpu':
-            threads = min(8, os.cpu_count() or 4)
+            threads = min(4, os.cpu_count() or 2)
             torch.set_num_threads(threads)
             print(f"[AI] Optimized PyTorch CPU inference threads: {threads}")
         self.model = None
+        self._model_loading = False
         self.transform = build_transform()
-        self._load_model()
+        
+        # If local weights exist, load immediately; otherwise load lazily
+        if os.path.exists(MODEL_PATH) and os.getenv("FORCE_MOCK", "false").lower() != "true":
+            self._load_model()
 
     def _load_model(self):
+        if self._model_loading or self.model is not None:
+            return
         if os.getenv("FORCE_MOCK", "false").lower() == "true":
             print("\n" + "="*80)
             print("  INFO: RUNNING IN MOCK SIMULATOR MODE (FORCE_MOCK=true)")
@@ -295,6 +301,7 @@ class DiabeticRetinopathyAI:
             self.model = None
             return
 
+        self._model_loading = True
         # Auto-download model weights if missing and MODEL_URL is set in environment
         model_url = os.getenv("MODEL_URL", "").strip()
         if not os.path.exists(MODEL_PATH) and model_url:
@@ -312,6 +319,7 @@ class DiabeticRetinopathyAI:
             print("  Falling back to mock mode.")
             print("="*80 + "\n")
             self.model = None
+            self._model_loading = False
             return
 
         try:
@@ -340,9 +348,11 @@ class DiabeticRetinopathyAI:
             print(f"  SUCCESS: SOTA DR Model ({epoch_info}) loaded & primed on {self.device}")
             print("  Real PyTorch inference and ultra-fast Grad-CAM generation are ACTIVE!")
             print("="*80 + "\n")
-        except Exception as e:
-            print(f"[ERROR] Failed to load model: {e}")
-            import traceback; traceback.print_exc()
+        except (Exception, MemoryError) as e:
+            print(f"[ERROR/OOM] Failed to load model in current environment: {e}")
+            self.model = None
+        finally:
+            self._model_loading = False
             self.model = None
 
     def preprocess_fundus(self, img_rgb: np.ndarray, desired_size: int = 512) -> np.ndarray:
