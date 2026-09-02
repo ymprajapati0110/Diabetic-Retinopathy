@@ -69,6 +69,7 @@ def upload_scan(
             db.refresh(default_patient)
         patient_id = default_patient.id
 
+    import base64
     file_bytes = file.file.read()
     ext = os.path.splitext(file.filename)[1] or ".jpg"
     filename = f"{uuid.uuid4()}{ext}"
@@ -77,7 +78,9 @@ def upload_scan(
     with open(save_path, "wb") as f:
         f.write(file_bytes)
 
-    raw_image_url = f"{BASE_URL}/uploads/{filename}"
+    # Encode as Base64 data URL for 100% reliable cloud delivery
+    mime_type = file.content_type or "image/jpeg"
+    raw_image_url = f"data:{mime_type};base64," + base64.b64encode(file_bytes).decode("utf-8")
 
     db_scan = Scan(
         patient_id=patient_id,

@@ -300,12 +300,14 @@ export default function DashboardPage() {
                 </div>
 
                 <div className="relative flex-1 min-h-[340px] flex items-center justify-center bg-slate-950 p-6">
-                  <img
-                    src={resolveImageUrl(scanResult.raw_image_s3_url)}
-                    alt="Original Fundus"
-                    className="absolute max-w-full max-h-[300px] object-contain rounded-xl select-none"
-                  />
-                  {scanResult.gradcam_image_s3_url && (
+                  {(scanResult?.raw_image_s3_url || preview) && (
+                    <img
+                      src={resolveImageUrl(scanResult?.raw_image_s3_url) || preview || ''}
+                      alt="Original Fundus"
+                      className="absolute max-w-full max-h-[300px] object-contain rounded-xl select-none"
+                    />
+                  )}
+                  {scanResult?.gradcam_image_s3_url && (
                     <img
                       src={resolveImageUrl(scanResult.gradcam_image_s3_url)}
                       alt="Grad-CAM Overlay"

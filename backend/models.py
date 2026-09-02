@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Float, ForeignKey, DateTime, JSON
+from sqlalchemy import Column, Integer, String, Text, Float, ForeignKey, DateTime, JSON
 from sqlalchemy.orm import relationship
 from datetime import datetime
 from database import Base
@@ -38,8 +38,8 @@ class Scan(Base):
     patient_id = Column(Integer, ForeignKey("patients.id"))
     doctor_id = Column(Integer, ForeignKey("users.id"))
     eye_side = Column(String(50), nullable=False)
-    raw_image_s3_url = Column(String(500), nullable=False)
-    gradcam_image_s3_url = Column(String(500), nullable=True)
+    raw_image_s3_url = Column(Text, nullable=False)
+    gradcam_image_s3_url = Column(Text, nullable=True)
     dr_prediction_level = Column(Integer, nullable=True)
     regression_score = Column(Float, nullable=True)
     status = Column(String(50), default="processing")

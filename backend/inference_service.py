@@ -4,6 +4,7 @@ import sys
 import io
 import uuid
 import re
+import base64
 import numpy as np
 import cv2
 import torch
@@ -632,8 +633,11 @@ class DiabeticRetinopathyAI:
                     gradcam_filename = f"gradcam_{uuid.uuid4()}.jpg"
                     gradcam_path = os.path.join(UPLOAD_DIR, gradcam_filename)
                     cv2.imwrite(gradcam_path, overlay)
-                    gradcam_url = f"{BASE_URL}/uploads/{gradcam_filename}"
-                    print(f"[AI] GradCAM saved: {gradcam_filename}")
+                    
+                    # Generate Base64 data URL for instant 100% reliable cloud delivery
+                    _, buffer = cv2.imencode('.jpg', overlay, [int(cv2.IMWRITE_JPEG_QUALITY), 85])
+                    gradcam_url = "data:image/jpeg;base64," + base64.b64encode(buffer).decode('utf-8')
+                    print(f"[AI] GradCAM encoded & saved: {gradcam_filename}")
 
                 except Exception as cam_err:
                     print(f"[WARNING] GradCAM failed: {cam_err}. Doing inference only.")
@@ -687,10 +691,12 @@ class DiabeticRetinopathyAI:
                 # Save GradCAM image to uploads
                 gradcam_filename = f"gradcam_{uuid.uuid4()}.jpg"
                 gradcam_path = os.path.join(UPLOAD_DIR, gradcam_filename)
-                
                 cv2.imwrite(gradcam_path, overlay)
-                gradcam_url = f"{BASE_URL}/uploads/{gradcam_filename}"
-                print(f"[AI Scan {scan_id} Mock] Saved high-fidelity synthetic GradCAM: {gradcam_filename}")
+                
+                # Encode as Base64 for 100% reliable cloud display
+                _, buffer = cv2.imencode('.jpg', overlay, [int(cv2.IMWRITE_JPEG_QUALITY), 85])
+                gradcam_url = "data:image/jpeg;base64," + base64.b64encode(buffer).decode('utf-8')
+                print(f"[AI Scan {scan_id} Mock] Encoded synthetic GradCAM: {gradcam_filename}")
             except Exception as mock_err:
                 print(f"[ERROR Scan {scan_id} Mock] Synthetic overlay creation failed: {mock_err}")
                 gradcam_url = None
