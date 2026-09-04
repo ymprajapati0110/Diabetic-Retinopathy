@@ -16,11 +16,21 @@ load_dotenv()
 app = FastAPI(title="Medical AI - Diabetic Retinopathy API")
 
 # Configure CORS
-origins = os.getenv("ALLOWED_ORIGINS", "http://localhost:3000").split(",")
+origins = [
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+    "https://diabetic-retinopathy.vercel.app"
+]
+extra_origins = os.getenv("ALLOWED_ORIGINS", "")
+if extra_origins:
+    for o in extra_origins.split(","):
+        if o.strip() and o.strip() not in origins:
+            origins.append(o.strip())
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
+    allow_origin_regex=r"https://.*\.vercel\.app",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

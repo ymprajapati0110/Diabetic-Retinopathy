@@ -18,8 +18,12 @@ apiInstance.interceptors.request.use((config) => {
 }, (error) => Promise.reject(error));
 
 // Check if we should use demo/mock mode
-// We use demo mode if we are running in the browser and NOT on localhost/127.0.0.1
+// If NEXT_PUBLIC_API_URL is configured (e.g. Render backend), we ALWAYS connect to the live backend.
+// Otherwise, if running on Vercel without a configured backend, fallback to demo mode.
 const isDemoMode = () => {
+  if (process.env.NEXT_PUBLIC_API_URL && process.env.NEXT_PUBLIC_API_URL.trim() !== '') {
+    return false;
+  }
   if (typeof window === 'undefined') return false;
   const host = window.location.hostname;
   return host !== 'localhost' && host !== '127.0.0.1' && host !== '::1';
