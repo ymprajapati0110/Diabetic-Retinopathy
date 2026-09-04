@@ -32,7 +32,56 @@ from albumentations.pytorch import ToTensorV2
 CLEAN_MODEL_PATH = os.path.join(PROJECT_ROOT, "convnextv2_large_clean.pth")
 EPOCH_MODEL_PATH = os.path.join(PROJECT_ROOT, "convnextv2_large_epoch_25_ema.pth")
 MODEL_PATH = CLEAN_MODEL_PATH if os.path.exists(CLEAN_MODEL_PATH) else EPOCH_MODEL_PATH
+MODEL_DOWNLOAD_URL = os.getenv(
+    "MODEL_DOWNLOAD_URL",
+    "https://github.com/ymprajapati0110/Diabetic-Retinopathy/releases/download/v1.0.0/convnextv2_large_clean.pth"
+)
 BASE_URL = os.getenv("BASE_URL") or os.getenv("RENDER_EXTERNAL_URL") or "http://localhost:8000"
+
+def download_model_if_missing(target_path: str, url: str):
+    """Automatically streams the clean 757 MB model weights from GitHub Release on first startup."""
+    if os.path.exists(target_path) and os.path.getsize(target_path) > 500 * 1024 * 1024:
+        return True
+    
+    print(f"\n[AI Auto-Downloader] Model weights not found at: {target_path}")
+    print(f"[AI Auto-Downloader] Fetching 757 MB weights from:\n  {url}")
+    os.makedirs(os.path.dirname(os.path.abspath(target_path)), exist_ok=True)
+    temp_path = target_path + ".download"
+    
+    import urllib.request
+    try:
+        req = urllib.request.Request(
+            url, 
+            headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
+        )
+        with urllib.request.urlopen(req) as response, open(temp_path, 'wb') as out_file:
+            total_length = response.getheader('content-length')
+            total_size = int(total_length) if total_length else 793932726
+            downloaded = 0
+            block_size = 1024 * 1024 * 8  # 8 MB chunks
+            
+            while True:
+                chunk = response.read(block_size)
+                if not chunk:
+                    break
+                out_file.write(chunk)
+                downloaded += len(chunk)
+                pct = (downloaded / total_size) * 100 if total_size else 0
+                print(f"[AI Download] {downloaded // (1024*1024)} MB / {total_size // (1024*1024)} MB ({pct:.1f}%)", end='\r')
+                
+        if os.path.exists(target_path):
+            os.remove(target_path)
+        os.replace(temp_path, target_path)
+        print(f"\n[AI Auto-Downloader] Download completed successfully: {target_path} ({os.path.getsize(target_path) // (1024*1024)} MB)")
+        return True
+    except Exception as e:
+        print(f"\n[AI Auto-Downloader] Failed to auto-download model weights: {e}")
+        if os.path.exists(temp_path):
+            try:
+                os.remove(temp_path)
+            except Exception:
+                pass
+        return False
 
 # ─── Calibrated Clinical Thresholds ───────────────────────────────────────────
 OPTIMIZED_THRESHOLDS = [0.6925, 1.6520, 1.9061, 3.2191]
@@ -167,17 +216,24 @@ class DiabeticRetinopathyAI:
         if self._model_loading or self.model is not None:
             return
 
-        if not os.path.exists(MODEL_PATH):
-            print(f"[WARNING] Model weights not found at: {MODEL_PATH}")
-            self.model = None
-            return
+        target_path = MODEL_PATH
+        if not os.path.exists(target_path):
+            download_model_if_missing(CLEAN_MODEL_PATH, MODEL_DOWNLOAD_URL)
+            if os.path.exists(CLEAN_MODEL_PATH):
+                target_path = CLEAN_MODEL_PATH
+            elif os.path.exists(EPOCH_MODEL_PATH):
+                target_path = EPOCH_MODEL_PATH
+            else:
+                print(f"[WARNING] Model weights could not be acquired at: {target_path}")
+                self.model = None
+                return
 
         self._model_loading = True
         try:
             from src.models.sota_dr_model import SOTA_DR_Model
-            print(f"[AI] Loading SOTA_DR_Model (ConvNeXtV2-Large) from:\n  {MODEL_PATH}")
+            print(f"[AI] Loading SOTA_DR_Model (ConvNeXtV2-Large) from:\n  {target_path}")
             model = SOTA_DR_Model(model_name='convnextv2_large', pretrained=False)
-            ckpt = torch.load(MODEL_PATH, map_location='cpu', weights_only=False, mmap=True)
+            ckpt = torch.load(target_path, map_location='cpu', weights_only=False, mmap=True)
             state_dict = ckpt.get('ema_state_dict', ckpt.get('model_state_dict', ckpt))
             model.load_state_dict(state_dict, strict=True)
             model.to(self.device)
