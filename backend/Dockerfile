@@ -28,7 +28,7 @@ COPY backend/ /app/backend/
 COPY src/ /app/src/
 
 # Copy the weights file if it exists in the build context (wildcard prevents failure if missing)
-COPY convnextv2_large_epoch_25_ema.pth* /app/
+COPY convnextv2_large_*.pth* /app/
 
 # Set environment variables
 ENV PYTHONPATH=/app
