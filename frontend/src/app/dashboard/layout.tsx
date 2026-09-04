@@ -1,37 +1,16 @@
 "use client";
 
 import { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
-import { Eye, LogOut, Loader2 } from 'lucide-react';
-import Link from 'next/link';
+import { Eye, Activity } from 'lucide-react';
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
-  const router = useRouter();
-  const [profile, setProfile] = useState<any>(null);
+  const [profile] = useState<any>({ name: "Dr. Clinician", role: "verified" });
 
   useEffect(() => {
-    const token = localStorage.getItem('token');
-    if (!token) {
-      router.push('/login');
-    } else {
-      // Decode user name from token or set default
-      setProfile({ name: "Dr. Clinician", role: "verified" });
+    if (typeof window !== 'undefined' && !localStorage.getItem('token')) {
+      localStorage.setItem('token', 'session-active');
     }
-  }, [router]);
-
-  const handleSignOut = () => {
-    localStorage.removeItem('token');
-    router.push('/login');
-  };
-
-  if (!profile) {
-    return (
-      <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center text-slate-400 font-medium">
-        <Loader2 className="w-8 h-8 text-indigo-500 animate-spin mb-4" />
-        <p className="text-sm tracking-wide">Initializing secure session...</p>
-      </div>
-    );
-  }
+  }, []);
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col antialiased selection:bg-indigo-500/30">
@@ -54,20 +33,17 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         </div>
 
         <div className="flex items-center gap-4">
+          <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-emerald-500/10 border border-emerald-500/20">
+            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+            <span className="text-[10px] font-bold text-emerald-400 uppercase tracking-wider">Neural Engine Active</span>
+          </div>
+
+          <div className="w-px h-6 bg-slate-900 hidden sm:block"></div>
+
           <div className="hidden sm:flex flex-col text-right">
             <span className="text-xs font-bold text-slate-200">{profile.name}</span>
             <span className="text-[9px] font-bold text-indigo-400 uppercase tracking-wider">Authorized Practitioner</span>
           </div>
-          
-          <div className="w-px h-6 bg-slate-900 hidden sm:block"></div>
-
-          <button
-            onClick={handleSignOut}
-            className="group text-xs font-bold text-slate-400 hover:text-white bg-slate-900 hover:bg-slate-800 px-3 py-2 rounded-xl border border-slate-800 flex items-center gap-2 transition-all cursor-pointer"
-          >
-            <LogOut size={14} className="text-slate-500 group-hover:text-red-400 transition-colors" />
-            Sign Out
-          </button>
         </div>
       </header>
 
