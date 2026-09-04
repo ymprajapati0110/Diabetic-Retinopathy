@@ -76,9 +76,8 @@ def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depend
             db.commit()
             db.refresh(user)
         
-        # Verify password: allow user's hashed password OR the test passcode "1234"
-        is_valid = form_data.password == "1234" or verify_password(form_data.password, user.hashed_password)
-        if not is_valid:
+        # Verify password against database hashed password!
+        if not verify_password(form_data.password, user.hashed_password):
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Incorrect email or password",

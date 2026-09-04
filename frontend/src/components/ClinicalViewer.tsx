@@ -2,7 +2,7 @@
 
 import { useState, useRef } from 'react';
 import { UploadCloud, FileImage, Image as ImageIcon, CheckCircle, AlertCircle, Percent, Ruler, X, Eye } from 'lucide-react';
-import api, { resolveImageUrl } from '@/lib/api';
+import api from '@/lib/api';
 
 export default function ClinicalViewer({ patientId, onScanComplete }: { patientId: string | number, onScanComplete: () => void }) {
   const [file, setFile] = useState<File | null>(null);
@@ -241,13 +241,13 @@ export default function ClinicalViewer({ patientId, onScanComplete }: { patientI
                {/* Image Overlay Engine */}
                <div className="relative flex-1 min-h-[300px] flex items-center justify-center bg-slate-950 group">
                  <img
-                   src={resolveImageUrl(scanResult.raw_image_s3_url)}
+                   src={scanResult.raw_image_s3_url}
                    alt="Raw Fundus"
                    className="absolute max-w-full max-h-[320px] object-contain pointer-events-none"
                  />
                  {scanResult.gradcam_image_s3_url && (
                    <img
-                     src={resolveImageUrl(scanResult.gradcam_image_s3_url)}
+                     src={scanResult.gradcam_image_s3_url}
                      alt="GradCAM Heatmap"
                      className="absolute max-w-full max-h-[320px] object-contain pointer-events-none transition-opacity mix-blend-screen filter contrast-125 saturate-150"
                      style={{ opacity: opacity / 100 }}

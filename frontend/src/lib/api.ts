@@ -1,16 +1,8 @@
 import axios from 'axios';
 
-// Get backend API base URL from env or fallback to localhost in development
-const getBaseURL = () => {
-  if (process.env.NEXT_PUBLIC_API_URL) {
-    const raw = process.env.NEXT_PUBLIC_API_URL.replace(/\/$/, '');
-    return raw.endsWith('/api') ? raw : `${raw}/api`;
-  }
-  return 'http://127.0.0.1:8000/api';
-};
-
+// Original axios instance for local connection
 const apiInstance = axios.create({
-  baseURL: getBaseURL(),
+  baseURL: process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api', // FastAPI default port or environment-defined URL
   headers: {
     'Content-Type': 'application/json',
   },
@@ -24,29 +16,12 @@ apiInstance.interceptors.request.use((config) => {
   return config;
 }, (error) => Promise.reject(error));
 
-// Helper to resolve image URLs properly across localhost and cloud backends
-export function resolveImageUrl(url: string | null | undefined): string {
-  if (!url) return '';
-  if (url.startsWith('blob:') || url.startsWith('data:')) return url;
-  
-  const backendBase = (process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000')
-    .replace(/\/api\/?$/, '')
-    .replace(/\/$/, '');
-    
-  if (url.includes('/uploads/')) {
-    const filename = url.split('/uploads/').pop();
-    return `${backendBase}/uploads/${filename}`;
-  }
-  
-  if (url.startsWith('http://localhost:8000') || url.startsWith('http://127.0.0.1:8000')) {
-    const path = url.replace(/^http:\/\/(localhost|127\.0\.0\.1):8000/, '');
-    return `${backendBase}${path}`;
-  }
-
-  return url;
-}
-
-const isDemoMode = false;
+// Check if we should use demo/mock mode
+// We use demo mode if we are running in the browser and NOT on localhost/127.0.0.1
+const isDemoMode = typeof window !== 'undefined' && 
+  window.location.hostname !== 'localhost' && 
+  window.location.hostname !== '127.0.0.1' &&
+  window.location.hostname !== '::1';
 
 // Mock database in localStorage
 const MOCK_SCANS_KEY = 'retina_mock_scans';
@@ -147,7 +122,7 @@ const api = {
         if (file && file instanceof File) {
           fileUrl = URL.createObjectURL(file);
         }
-
+        
         const newScan = {
           id: Date.now(),
           dr_prediction_level: 4, // Proliferative DR as requested

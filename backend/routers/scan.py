@@ -16,7 +16,7 @@ router = APIRouter()
 UPLOAD_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "uploads")
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
-BASE_URL = os.getenv("BASE_URL", "").rstrip("/")
+BASE_URL = os.getenv("BASE_URL", "http://localhost:8000")
 
 @router.get("/", response_model=List[ScanResponse])
 def get_all_scans(
@@ -46,7 +46,7 @@ def upload_scan(
     current_user: User = Depends(get_current_verified_doctor),
     db: Session = Depends(get_db)
 ):
-    if file.content_type and not file.content_type.startswith("image/"):
+    if not file.content_type.startswith("image/"):
         raise HTTPException(status_code=400, detail="File must be an image.")
 
     # Find or create a default patient for this doctor if patient_id is not provided
@@ -69,7 +69,6 @@ def upload_scan(
             db.refresh(default_patient)
         patient_id = default_patient.id
 
-    import base64
     file_bytes = file.file.read()
     ext = os.path.splitext(file.filename)[1] or ".jpg"
     filename = f"{uuid.uuid4()}{ext}"
@@ -78,9 +77,7 @@ def upload_scan(
     with open(save_path, "wb") as f:
         f.write(file_bytes)
 
-    # Encode as Base64 data URL for 100% reliable cloud delivery
-    mime_type = file.content_type or "image/jpeg"
-    raw_image_url = f"data:{mime_type};base64," + base64.b64encode(file_bytes).decode("utf-8")
+    raw_image_url = f"{BASE_URL}/uploads/{filename}"
 
     db_scan = Scan(
         patient_id=patient_id,

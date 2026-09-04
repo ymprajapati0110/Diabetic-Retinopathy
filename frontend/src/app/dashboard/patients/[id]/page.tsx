@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { useParams } from 'next/navigation';
 import { User, Activity, Clock, ShieldCheck, FileSearch } from 'lucide-react';
 import ClinicalViewer from '@/components/ClinicalViewer';
-import api, { resolveImageUrl } from '@/lib/api';
+import api from '@/lib/api';
 
 export default function PatientDetailPage() {
   const params = useParams();
@@ -102,7 +102,7 @@ export default function PatientDetailPage() {
                   <span className={`absolute top-2 right-2 flex w-2 h-2 rounded-full ${scan.status === 'completed' ? 'bg-green-500' : 'bg-yellow-500 animate-pulse'}`}></span>
                   <div className="aspect-square bg-slate-900 rounded-xl mb-3 overflow-hidden flex items-center justify-center">
                     {scan.status === 'completed' ? (
-                      <img src={resolveImageUrl(scan.raw_image_s3_url)} className="w-full h-full object-cover opacity-60 group-hover:opacity-100 transition-opacity" alt="Thumb" />
+                      <img src={scan.raw_image_s3_url} className="w-full h-full object-cover opacity-60 group-hover:opacity-100 transition-opacity" alt="Thumb" />
                     ) : (
                       <Activity className="text-slate-700 animate-pulse" size={24} />
                     )}
