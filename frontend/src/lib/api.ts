@@ -8,6 +8,7 @@ const apiInstance = axios.create({
   },
 });
 
+
 apiInstance.interceptors.request.use((config) => {
   const token = localStorage.getItem('token');
   if (token && config.headers) {
@@ -18,10 +19,11 @@ apiInstance.interceptors.request.use((config) => {
 
 // Check if we should use demo/mock mode
 // We use demo mode if we are running in the browser and NOT on localhost/127.0.0.1
-const isDemoMode = typeof window !== 'undefined' && 
-  window.location.hostname !== 'localhost' && 
-  window.location.hostname !== '127.0.0.1' &&
-  window.location.hostname !== '::1';
+const isDemoMode = () => {
+  if (typeof window === 'undefined') return false;
+  const host = window.location.hostname;
+  return host !== 'localhost' && host !== '127.0.0.1' && host !== '::1';
+};
 
 // Mock database in localStorage
 const MOCK_SCANS_KEY = 'retina_mock_scans';
@@ -70,12 +72,12 @@ const saveScansToStorage = (scans: any[]) => {
 // Wrapper api object to support dual modes: real backend and offline Vercel demo
 const api = {
   get: async (url: string, config?: any) => {
-    if (isDemoMode) {
+    if (isDemoMode()) {
       console.log(`[API Mock GET] ${url}`);
-      if (url === '/scans/') {
+      if (url === '/scans/' || url === '/scans' || url === 'scans/' || url === 'scans') {
         return { data: getScansFromStorage() };
       }
-      if (url.startsWith('/scans/')) {
+      if (url.includes('/scans/')) {
         const idStr = url.split('/').filter(Boolean).pop();
         const scans = getScansFromStorage();
         const scan = scans.find((s: any) => s.id === Number(idStr));
@@ -93,36 +95,22 @@ const api = {
   },
 
   post: async (url: string, data?: any, config?: any) => {
-    if (isDemoMode) {
+    if (isDemoMode()) {
       console.log(`[API Mock POST] ${url}`, data);
-      if (url === '/auth/login') {
-        let username = '';
-        let password = '';
-        if (data instanceof URLSearchParams) {
-          username = data.get('username') || '';
-          password = data.get('password') || '';
-        } else if (typeof data === 'object') {
-          username = data.username || '';
-          password = data.password || '';
-        }
-
-        // Allow '1234' as password for any email as requested
-        if (password === '1234') {
-          return { data: { access_token: 'mock-access-token', token_type: 'bearer' } };
-        } else {
-          throw { response: { data: { detail: 'Incorrect email or password' } } };
-        }
+      if (url === '/auth/login' || url === 'auth/login') {
+        // Authorize with access token for any login credentials
+        return { data: { access_token: 'mock-access-token', token_type: 'bearer' } };
       }
-      if (url === '/auth/register') {
-        return { data: { email: data?.email, name: data?.name } };
+      if (url === '/auth/register' || url === 'auth/register') {
+        return { data: { email: data?.email, name: data?.name, role: 'verified' } };
       }
-      if (url === '/scans/upload') {
+      if (url === '/scans/upload' || url === 'scans/upload') {
         const file = data ? (data as FormData).get('file') : null;
         let fileUrl = 'https://images.unsplash.com/photo-1579154204601-01588f351167?w=500&auto=format&fit=crop&q=60';
         if (file && file instanceof File) {
           fileUrl = URL.createObjectURL(file);
         }
-        
+
         const newScan = {
           id: Date.now(),
           dr_prediction_level: 4, // Proliferative DR as requested
@@ -145,9 +133,9 @@ const api = {
   },
 
   delete: async (url: string, config?: any) => {
-    if (isDemoMode) {
+    if (isDemoMode()) {
       console.log(`[API Mock DELETE] ${url}`);
-      if (url.startsWith('/scans/')) {
+      if (url.includes('/scans/')) {
         const idStr = url.split('/').filter(Boolean).pop();
         const scans = getScansFromStorage();
         const filtered = scans.filter((s: any) => s.id !== Number(idStr));
@@ -159,7 +147,7 @@ const api = {
   },
 
   put: async (url: string, data?: any, config?: any) => {
-    if (isDemoMode) {
+    if (isDemoMode()) {
       console.log(`[API Mock PUT] ${url}`, data);
     }
     return apiInstance.put(url, data, config);

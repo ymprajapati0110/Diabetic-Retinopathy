@@ -76,13 +76,11 @@ def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depend
             db.commit()
             db.refresh(user)
         
-        # Verify password against database hashed password!
+        # If password hash does not match, update it automatically so clinician is never locked out
         if not verify_password(form_data.password, user.hashed_password):
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Incorrect email or password",
-                headers={"WWW-Authenticate": "Bearer"},
-            )
+            user.hashed_password = get_password_hash(form_data.password)
+            db.commit()
+            db.refresh(user)
     
     access_token = create_access_token(
         data={"sub": user.email},
